@@ -1,0 +1,18 @@
+#include <ICM42688P.h>
+
+ICM42688P imu;
+#define CS_PIN 17
+
+void setup() {
+  Serial.begin(115200);
+  imu.begin(SPI, CS_PIN);
+  // Defaults: 200Hz ODR, 16g accel, 2000dps gyro, g accel, deg/s gyro
+}
+
+void loop() {
+  float ax, ay, az, gx, gy, gz;
+  imu.read(ax, ay, az, gx, gy, gz);
+  Serial.println("Accel g: " + String(ax) + " " + String(ay) + " " + String(az));
+  Serial.println("Gyro deg/s: " + String(gx) + " " + String(gy) + " " + String(gz));
+  delay(100);
+}
