@@ -33,28 +33,32 @@ public:
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
-  // Čte data a aplikuje SW scaling (HW bias už řeší čip)
+  // Hlavní funkce pro čtení FIFO (zachovává 20-bit resolution)
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
-  // --- Software Offsets & Scales ---
+  // --- Wrapper metody pro zpětnou kompatibilitu ---
+  void setGyroOffset(float ox, float oy, float oz);
+  void setAccelOffset(float ox, float oy, float oz);
+  void getGyroOffset(float &ox, float &oy, float &oz);
+  void getAccelOffset(float &ox, float &oy, float &oz);
+
+  // --- NOVÉ API (Kalibrace & HW/SW kontrola) ---
+  
+  // SW korekce
   void setGyroSoftwareOffset(float ox, float oy, float oz);
   void setAccelSoftwareOffset(float ox, float oy, float oz);
-  
-  // NOVÉ: Nastavení softwarového škálování (citlivosti)
   void setAccelSoftwareScale(float sx, float sy, float sz);
 
-  // --- Hardware Offsets (zápis do čipu) ---
+  // HW korekce (zápis do registrů)
   void setGyroHardwareOffset(float ox, float oy, float oz);
   void setAccelHardwareOffset(float ox, float oy, float oz);
   
   void getAccelHardwareOffset(float &ox, float &oy, float &oz);
   void getAccelSoftwareScale(float &sx, float &sy, float &sz);
 
-  // --- Kalibrace ---
+  // --- Kalibrační rutiny ---
   void autoCalibrateGyro(uint16_t samples = 1000);
-  
-  // Vylepšená 6-bodová kalibrace (Bias + Scaling)
-  void autoCalibrateAccel(); 
+  void autoCalibrateAccel(); // 6-bodová metoda
 
 private:
   ICM_BUS _bus;
@@ -64,8 +68,6 @@ private:
 
   float _gOX, _gOY, _gOZ;
   float _aOX, _aOY, _aOZ;
-
-  // Scale faktory pro akcelerometr (default 1.0)
   float _aSx, _aSy, _aSz;
   
   float _hwAccelBiasX, _hwAccelBiasY, _hwAccelBiasZ; 
