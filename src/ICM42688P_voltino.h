@@ -30,10 +30,11 @@ enum ICM_ODR {
 class ICM42688P {
 public:
   ICM42688P();
+  // csPin = 17 je default pro Pico, SPI speed default 10MHz
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
-  // Hlavní funkce pro čtení FIFO (zachovává 20-bit resolution)
+  // Původní funkce pro čtení FIFO (Packet 4, 19/18-bit effective resolution)
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
   // --- Wrapper metody pro zpětnou kompatibilitu ---
@@ -44,19 +45,19 @@ public:
 
   // --- NOVÉ API (Kalibrace & HW/SW kontrola) ---
   
-  // SW korekce
+  // SW korekce (offsety odečítané v MCU)
   void setGyroSoftwareOffset(float ox, float oy, float oz);
   void setAccelSoftwareOffset(float ox, float oy, float oz);
   void setAccelSoftwareScale(float sx, float sy, float sz);
 
-  // HW korekce (zápis do registrů)
+  // HW korekce (zápis přímo do registrů čipu v Bance 4)
   void setGyroHardwareOffset(float ox, float oy, float oz);
   void setAccelHardwareOffset(float ox, float oy, float oz);
   
   void getAccelHardwareOffset(float &ox, float &oy, float &oz);
   void getAccelSoftwareScale(float &sx, float &sy, float &sz);
 
-  // --- Kalibrační rutiny ---
+  // Automatická kalibrace
   void autoCalibrateGyro(uint16_t samples = 1000);
   void autoCalibrateAccel(); // 6-bodová metoda
 
