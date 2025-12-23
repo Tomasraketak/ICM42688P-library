@@ -30,36 +30,31 @@ enum ICM_ODR {
 class ICM42688P {
 public:
   ICM42688P();
-  // csPin = 17 je default pro Pico, SPI speed default 10MHz
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
-  // Původní funkce pro čtení FIFO (Packet 4, 19/18-bit effective resolution)
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
-  // --- Wrapper metody pro zpětnou kompatibilitu ---
+  // --- Zpětná kompatibilita (ovládá SW offsety) ---
   void setGyroOffset(float ox, float oy, float oz);
   void setAccelOffset(float ox, float oy, float oz);
   void getGyroOffset(float &ox, float &oy, float &oz);
   void getAccelOffset(float &ox, float &oy, float &oz);
 
-  // --- NOVÉ API (Kalibrace & HW/SW kontrola) ---
+  // --- NOVÉ API ---
   
-  // SW korekce (offsety odečítané v MCU)
-  void setGyroSoftwareOffset(float ox, float oy, float oz);
-  void setAccelSoftwareOffset(float ox, float oy, float oz);
+  // Software Scale (pro 6-bodovou kalibraci)
   void setAccelSoftwareScale(float sx, float sy, float sz);
-
-  // HW korekce (zápis přímo do registrů čipu v Bance 4)
-  void setGyroHardwareOffset(float ox, float oy, float oz);
-  void setAccelHardwareOffset(float ox, float oy, float oz);
-  
-  void getAccelHardwareOffset(float &ox, float &oy, float &oz);
   void getAccelSoftwareScale(float &sx, float &sy, float &sz);
 
-  // Automatická kalibrace
+  // HARDWARE OFFSETS (Zápis do registrů čipu)
+  // Toto fyzicky odečte bias uvnitř čipu.
+  void setGyroHardwareOffset(float ox, float oy, float oz);
+  void setAccelHardwareOffset(float ox, float oy, float oz);
+
+  // --- Kalibrace ---
   void autoCalibrateGyro(uint16_t samples = 1000);
-  void autoCalibrateAccel(); // 6-bodová metoda
+  void autoCalibrateAccel(); 
 
 private:
   ICM_BUS _bus;
@@ -67,11 +62,10 @@ private:
   SPISettings _spiSettings;
   ICM_ODR _odr;
 
+  // SW korekce (použijí se pro Scale factor a jemné doladění)
   float _gOX, _gOY, _gOZ;
   float _aOX, _aOY, _aOZ;
   float _aSx, _aSy, _aSz;
-  
-  float _hwAccelBiasX, _hwAccelBiasY, _hwAccelBiasZ; 
 
   void writeReg(uint8_t reg, uint8_t val);
   uint8_t readReg(uint8_t reg);
