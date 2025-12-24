@@ -33,10 +33,10 @@ public:
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
-  // Čtení FIFO (původní funkční logika)
+  // Původní funkce pro čtení FIFO (zachována logika 1:1)
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
-  // --- Zpětná kompatibilita ---
+  // --- Wrapper metody pro zpětnou kompatibilitu ---
   void setGyroOffset(float ox, float oy, float oz);
   void setAccelOffset(float ox, float oy, float oz);
   void getGyroOffset(float &ox, float &oy, float &oz);
@@ -44,22 +44,22 @@ public:
 
   // --- NOVÉ API ---
   
-  // Resetuje všechny hardwarové offsety na 0 (Smaže kalibraci v čipu)
+  // Resetuje HW registry na 0 (smaže kalibraci v čipu)
   void resetHardwareOffsets();
 
-  // Software Scale (pro 6-bodovou kalibraci)
+  // Software Scale (pro kalibraci citlivosti akcelerometru)
   void setAccelSoftwareScale(float sx, float sy, float sz);
   void getAccelSoftwareScale(float &sx, float &sy, float &sz);
 
-  // SW Offsety
+  // SW Offsety (počítané v procesoru)
   void setGyroSoftwareOffset(float ox, float oy, float oz);
   void setAccelSoftwareOffset(float ox, float oy, float oz);
 
-  // HW Offsety (zápis do Banky 4)
+  // HW Offsety (zápis přímo do čipu)
   void setGyroHardwareOffset(float ox, float oy, float oz);
   void setAccelHardwareOffset(float ox, float oy, float oz);
   
-  // --- Kalibrace ---
+  // --- Kalibrační funkce ---
   void autoCalibrateGyro(uint16_t samples = 1000);
   void autoCalibrateAccel(); 
 
