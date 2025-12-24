@@ -33,27 +33,36 @@ public:
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
-  // Čtení dat s aplikovanou SW kalibrací
+  // Čtení dat (automaticky aplikuje SW kalibraci)
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
-  // --- Nastavení Kalibrace (Software) ---
-  // Offsety se odečítají: (Raw - Offset)
+  // --- Kalibrace a Nastavení ---
+  
+  // Funkce pro smazání chyb v čipu (ZAVOLEJ JEDNOU V SETUPU)
+  void resetHardwareOffsets();
+
+  // Manuální nastavení offsetů (pokud je znáš z minula)
+  void setGyroSoftwareOffset(float ox, float oy, float oz);
+  void setAccelSoftwareOffset(float ox, float oy, float oz);
+  void setAccelSoftwareScale(float sx, float sy, float sz);
+
+  // Získání aktuálních offsetů (pro uložení/výpis)
+  void getGyroSoftwareOffset(float &ox, float &oy, float &oz);
+  void getAccelSoftwareOffset(float &ox, float &oy, float &oz);
+  void getAccelSoftwareScale(float &sx, float &sy, float &sz);
+
+  // Wrappery pro kompatibilitu
   void setGyroOffset(float ox, float oy, float oz);
   void setAccelOffset(float ox, float oy, float oz);
+  void setAccelScale(float sx, float sy, float sz); // Wrapper pro Scale
   
-  // Scale faktory se násobí: (Raw - Offset) * Scale
-  // Default je 1.0. Používá se k opravě citlivosti akcelerometru.
-  void setAccelScale(float sx, float sy, float sz);
-
-  // --- Získání hodnot ---
   void getGyroOffset(float &ox, float &oy, float &oz);
   void getAccelOffset(float &ox, float &oy, float &oz);
-  void getAccelScale(float &sx, float &sy, float &sz);
+  void getAccelScale(float &sx, float &sy, float &sz); // Wrapper pro Scale
 
-  // --- Kalibrační rutiny ---
-  // Vypočítají hodnoty a uloží je do paměti (do restartu)
-  void autoCalibrateGyro(uint16_t samples = 1000);
-  void autoCalibrateAccel(); // 6-bodová metoda (Sphere Fitting)
+  // Automatická kalibrace (vypočítá a uloží do SW proměnných)
+  void autoCalibrateGyro(uint16_t samples = 750);
+  void autoCalibrateAccel(); 
 
 private:
   ICM_BUS _bus;
@@ -61,7 +70,7 @@ private:
   SPISettings _spiSettings;
   ICM_ODR _odr;
 
-  // Kalibrační proměnné
+  // Kalibrační hodnoty (Software)
   float _gOX, _gOY, _gOZ;
   float _aOX, _aOY, _aOZ;
   float _aSx, _aSy, _aSz;

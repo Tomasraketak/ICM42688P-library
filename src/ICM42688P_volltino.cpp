@@ -3,7 +3,7 @@
 ICM42688P::ICM42688P()
 : _bus(BUS_I2C), _csPin(17), 
   _spiSettings(10000000, MSBFIRST, SPI_MODE3), // 10 MHz SPI
-  _odr(ODR_500HZ), // Default v konstruktoru (bude přepsán v begin)
+  _odr(ODR_500HZ), // Default (přepíše se v begin)
   _gOX(0), _gOY(0), _gOZ(0),
   _aOX(0), _aOY(0), _aOZ(0),
   _aSx(1.0f), _aSy(1.0f), _aSz(1.0f) {}
@@ -12,7 +12,7 @@ bool ICM42688P::begin(ICM_BUS busType, uint8_t csPin) {
   _bus = busType;
   _csPin = csPin;
 
-  // --- AUTOMATICKÉ NASTAVENÍ DEFAULTNÍHO ODR ---
+  // Automatické nastavení ODR podle typu sběrnice
   if (_bus == BUS_SPI) {
     _odr = ODR_4KHZ; // SPI = 4 kHz
   } else {
@@ -42,7 +42,7 @@ bool ICM42688P::begin(ICM_BUS busType, uint8_t csPin) {
 
   writeReg(0x4E, 0x0F); // LN mode
   
-  // Zápis ODR (nyní už s hodnotou podle typu sběrnice)
+  // Zápis ODR
   writeReg(0x4F, (0 << 5) | (uint8_t)_odr); 
   writeReg(0x50, (0 << 5) | (uint8_t)_odr); 
 
@@ -124,19 +124,23 @@ void ICM42688P::resetHardwareOffsets() {
 }
 
 // --- SW Setters ---
-void ICM42688P::setGyroOffset(float ox, float oy, float oz) { _gOX = ox; _gOY = oy; _gOZ = oz; }
-void ICM42688P::setAccelOffset(float ox, float oy, float oz) { _aOX = ox; _aOY = oy; _aOZ = oz; }
-void ICM42688P::setAccelScale(float sx, float sy, float sz) { _aSx = sx; _aSy = sy; _aSz = sz; }
-
 void ICM42688P::setGyroSoftwareOffset(float ox, float oy, float oz) { _gOX = ox; _gOY = oy; _gOZ = oz; }
 void ICM42688P::setAccelSoftwareOffset(float ox, float oy, float oz) { _aOX = ox; _aOY = oy; _aOZ = oz; }
 void ICM42688P::setAccelSoftwareScale(float sx, float sy, float sz) { _aSx = sx; _aSy = sy; _aSz = sz; }
 
 // --- Getters ---
-void ICM42688P::getGyroOffset(float &ox, float &oy, float &oz) { ox = _gOX; oy = _gOY; oz = _gOZ; }
-void ICM42688P::getAccelOffset(float &ox, float &oy, float &oz) { ox = _aOX; oy = _aOY; oz = _aOZ; }
-void ICM42688P::getAccelScale(float &sx, float &sy, float &sz) { sx = _aSx; sy = _aSy; sz = _aSz; }
+void ICM42688P::getGyroSoftwareOffset(float &ox, float &oy, float &oz) { ox = _gOX; oy = _gOY; oz = _gOZ; }
+void ICM42688P::getAccelSoftwareOffset(float &ox, float &oy, float &oz) { ox = _aOX; oy = _aOY; oz = _aOZ; }
 void ICM42688P::getAccelSoftwareScale(float &sx, float &sy, float &sz) { sx = _aSx; sy = _aSy; sz = _aSz; }
+
+// --- Wrappers (Kompatibilita) ---
+void ICM42688P::setGyroOffset(float ox, float oy, float oz) { setGyroSoftwareOffset(ox, oy, oz); }
+void ICM42688P::setAccelOffset(float ox, float oy, float oz) { setAccelSoftwareOffset(ox, oy, oz); }
+void ICM42688P::setAccelScale(float sx, float sy, float sz) { setAccelSoftwareScale(sx, sy, sz); }
+
+void ICM42688P::getGyroOffset(float &ox, float &oy, float &oz) { getGyroSoftwareOffset(ox, oy, oz); }
+void ICM42688P::getAccelOffset(float &ox, float &oy, float &oz) { getAccelSoftwareOffset(ox, oy, oz); }
+void ICM42688P::getAccelScale(float &sx, float &sy, float &sz) { getAccelSoftwareScale(sx, sy, sz); }
 
 // --- KALIBRACE ---
 void ICM42688P::autoCalibrateGyro(uint16_t samples) {
