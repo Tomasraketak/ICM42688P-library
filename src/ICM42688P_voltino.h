@@ -33,24 +33,30 @@ public:
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
+  // Čtení FIFO
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
-  // --- Zpětná kompatibilita (ovládá SW offsety) ---
+  // --- Zpětná kompatibilita (Wrappers) ---
+  // Tyto funkce nyní volají setGyroSoftwareOffset / setAccelSoftwareOffset
   void setGyroOffset(float ox, float oy, float oz);
   void setAccelOffset(float ox, float oy, float oz);
   void getGyroOffset(float &ox, float &oy, float &oz);
   void getAccelOffset(float &ox, float &oy, float &oz);
 
-  // --- NOVÉ API ---
-  
-  // Software Scale (pro 6-bodovou kalibraci)
+  // --- SOFTWARE OFFSETS (Počítané v procesoru) ---
+  // Tyto funkce byly v minulé verzi v .h chyběly, proto to házelo error.
+  void setGyroSoftwareOffset(float ox, float oy, float oz);
+  void setAccelSoftwareOffset(float ox, float oy, float oz);
   void setAccelSoftwareScale(float sx, float sy, float sz);
+  
   void getAccelSoftwareScale(float &sx, float &sy, float &sz);
 
-  // HARDWARE OFFSETS (Zápis do registrů čipu)
+  // --- HARDWARE OFFSETS (Zápis přímo do registrů čipu) ---
   // Toto fyzicky odečte bias uvnitř čipu.
   void setGyroHardwareOffset(float ox, float oy, float oz);
   void setAccelHardwareOffset(float ox, float oy, float oz);
+  
+  void getAccelHardwareOffset(float &ox, float &oy, float &oz);
 
   // --- Kalibrace ---
   void autoCalibrateGyro(uint16_t samples = 1000);
@@ -62,10 +68,13 @@ private:
   SPISettings _spiSettings;
   ICM_ODR _odr;
 
-  // SW korekce (použijí se pro Scale factor a jemné doladění)
+  // Proměnné pro SW korekce
   float _gOX, _gOY, _gOZ;
   float _aOX, _aOY, _aOZ;
   float _aSx, _aSy, _aSz;
+  
+  // Cache pro HW offsety (pro výpis)
+  float _hwAccelBiasX, _hwAccelBiasY, _hwAccelBiasZ;
 
   void writeReg(uint8_t reg, uint8_t val);
   uint8_t readReg(uint8_t reg);
