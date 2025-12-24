@@ -2,7 +2,7 @@
 
 ICM42688P::ICM42688P()
 : _bus(BUS_I2C), _csPin(17), 
-  _spiSettings(10000000, MSBFIRST, SPI_MODE3), // Zachováno 10 MHz
+  _spiSettings(10000000, MSBFIRST, SPI_MODE3), // 10 MHz
   _odr(ODR_500HZ),
   _gOX(0), _gOY(0), _gOZ(0),
   _aOX(0), _aOY(0), _aOZ(0),
@@ -28,7 +28,7 @@ bool ICM42688P::begin(ICM_BUS busType, uint8_t csPin) {
   if (who != 0x47 && who != 0x98) return false;
 
   writeReg(0x00, 0x01); // Reset
-  delay(2); 
+  delay(10); 
 
   uint8_t intConfig1 = readReg(0x64);
   writeReg(0x64, intConfig1 & ~(1 << 4));
@@ -55,7 +55,7 @@ void ICM42688P::setBank(uint8_t bank) {
   writeReg(REG_BANK_SEL, bank);
 }
 
-// --- PŮVODNÍ ČTENÍ FIFO (Zachována logika bitshiftů) ---
+// --- ČTENÍ FIFO (Zachována logika bitshiftů) ---
 bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz) {
   uint16_t fifoCount = ((uint16_t)readReg(0x2E) << 8) | readReg(0x2F);
   if (fifoCount < 20) return false;
@@ -90,7 +90,8 @@ bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, 
   gz_r = (gz_r << 12) >> 12; 
   gz_r >>= 1;
 
-  // Aplikace SW korekcí
+  // HW Offsety jsou již odečteny v čipu.
+  // Zde odečítáme jen SW offsety (pokud nějaké jsou) a aplikujeme Scale.
   float raw_ax = (ax_r / 8192.0f) - _aOX;
   float raw_ay = (ay_r / 8192.0f) - _aOY;
   float raw_az = (az_r / 8192.0f) - _aOZ;
@@ -106,6 +107,18 @@ bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, 
   return true;
 }
 
+// Vyčte všechna data z FIFO (zahodí je), aby následující měření bylo čerstvé
+void ICM42688P::flushFIFO() {
+  uint16_t fifoCount = ((uint16_t)readReg(0x2E) << 8) | readReg(0x2F);
+  while (fifoCount > 0) {
+    uint8_t dummy[20];
+    uint8_t len = (fifoCount > 20) ? 20 : fifoCount;
+    readRegs(0x30, dummy, len);
+    fifoCount = ((uint16_t)readReg(0x2E) << 8) | readReg(0x2F);
+    delayMicroseconds(100);
+  }
+}
+
 // --- Wrappers ---
 void ICM42688P::setGyroOffset(float ox, float oy, float oz) { setGyroSoftwareOffset(ox, oy, oz); }
 void ICM42688P::setAccelOffset(float ox, float oy, float oz) { setAccelSoftwareOffset(ox, oy, oz); }
@@ -118,10 +131,9 @@ void ICM42688P::setAccelSoftwareOffset(float ox, float oy, float oz) { _aOX = ox
 void ICM42688P::setAccelSoftwareScale(float sx, float sy, float sz) { _aSx = sx; _aSy = sy; _aSz = sz; }
 void ICM42688P::getAccelSoftwareScale(float &sx, float &sy, float &sz) { sx = _aSx; sy = _aSy; sz = _aSz; }
 
-// --- HARDWARE API (Zápis do Banky 4, Registry 0x77-0x7F) ---
+// --- HARDWARE API (Bank 4, 0x77 - 0x7F) ---
 
-// Pomocná funkce pro 12-bit limit
-int16_t clamp12bit_vals(int32_t val) {
+int16_t clamp12bit_hw(int32_t val) {
   if (val > 2047) return 2047;
   if (val < -2048) return -2048;
   return (int16_t)val;
@@ -129,7 +141,7 @@ int16_t clamp12bit_vals(int32_t val) {
 
 void ICM42688P::resetHardwareOffsets() {
   setBank(4);
-  // Registry 0x77 až 0x7F
+  // Registry 0x77 az 0x7F
   for (uint8_t r = 0x77; r <= 0x7F; r++) {
     writeReg(r, 0x00);
   }
@@ -139,10 +151,11 @@ void ICM42688P::resetHardwareOffsets() {
 void ICM42688P::setGyroHardwareOffset(float ox, float oy, float oz) {
   setBank(4);
   
-  // 1 LSB = 1/32 dps. Registry se ODEČÍTAJÍ.
-  int16_t gx = clamp12bit_vals((int32_t)(ox * 32.0f));
-  int16_t gy = clamp12bit_vals((int32_t)(oy * 32.0f));
-  int16_t gz = clamp12bit_vals((int32_t)(oz * 32.0f));
+  // Resolution 1/32 dps.
+  // Datasheet: Offset is SUBTRACTED.
+  int16_t gx = clamp12bit_hw((int32_t)(ox * 32.0f));
+  int16_t gy = clamp12bit_hw((int32_t)(oy * 32.0f));
+  int16_t gz = clamp12bit_hw((int32_t)(oz * 32.0f));
 
   uint8_t gx_l = gx & 0xFF;
   uint8_t gx_h = (gx >> 8) & 0x0F;
@@ -166,7 +179,6 @@ void ICM42688P::setGyroHardwareOffset(float ox, float oy, float oz) {
   writeReg(0x7A, gz_l);
 
   // 0x7B: Accel X High [7:4] | Gyro Z High [3:0]
-  // Musíme načíst aktuální hodnotu, abychom nesmazali Accel X
   uint8_t reg7B = readReg(0x7B);
   writeReg(0x7B, (reg7B & 0xF0) | gz_h);
 
@@ -177,9 +189,9 @@ void ICM42688P::setAccelHardwareOffset(float ox, float oy, float oz) {
   setBank(4);
 
   // 1 LSB = 0.5 mg -> 2000 LSB/g
-  int16_t ax = clamp12bit_vals((int32_t)(ox * 2000.0f));
-  int16_t ay = clamp12bit_vals((int32_t)(oy * 2000.0f));
-  int16_t az = clamp12bit_vals((int32_t)(oz * 2000.0f));
+  int16_t ax = clamp12bit_hw((int32_t)(ox * 2000.0f));
+  int16_t ay = clamp12bit_hw((int32_t)(oy * 2000.0f));
+  int16_t az = clamp12bit_hw((int32_t)(oz * 2000.0f));
 
   uint8_t ax_l = ax & 0xFF;
   uint8_t ax_h = (ax >> 8) & 0x0F;
@@ -191,7 +203,6 @@ void ICM42688P::setAccelHardwareOffset(float ox, float oy, float oz) {
   uint8_t az_h = (az >> 8) & 0x0F;
 
   // 0x7B: Accel X High [7:4] | Gyro Z High [3:0]
-  // Zachovat Gyro Z
   uint8_t reg7B = readReg(0x7B);
   writeReg(0x7B, (ax_h << 4) | (reg7B & 0x0F));
   
@@ -210,15 +221,23 @@ void ICM42688P::setAccelHardwareOffset(float ox, float oy, float oz) {
   setBank(0);
 }
 
+void ICM42688P::getGyroHardwareOffset(float &ox, float &oy, float &oz) {
+  // Pro debug - lze implementovat čtení registrů, prozatím vrátí 0
+  ox = 0; oy = 0; oz = 0; 
+}
+
 // --- KALIBRACE ---
 void ICM42688P::autoCalibrateGyro(uint16_t samples) {
-  Serial.println("GYRO CALIBRATION (HW)... Resetting offsets first.");
+  Serial.println("GYRO CALIBRATION (HW)...");
   
-  // 1. Reset HW offsets
+  // 1. Reset HW offsets (abychom měřili čistý bias)
   resetHardwareOffsets();
   _gOX = 0; _gOY = 0; _gOZ = 0;
   
-  delay(200);
+  // 2. Vyprázdnit FIFO (DŮLEŽITÉ: odstraníme stará data s případnou chybou)
+  delay(100);
+  flushFIFO(); 
+  delay(100);
 
   double sumX = 0, sumY = 0, sumZ = 0;
   uint16_t count = 0;
@@ -227,7 +246,7 @@ void ICM42688P::autoCalibrateGyro(uint16_t samples) {
     if (readFIFO(ax, ay, az, gx, gy, gz)) {
       sumX += gx; sumY += gy; sumZ += gz; count++;
     }
-    delayMicroseconds(1500);
+    delayMicroseconds(1000);
   }
 
   if (count > 0) {
@@ -235,19 +254,30 @@ void ICM42688P::autoCalibrateGyro(uint16_t samples) {
     float avgBiasY = (float)(sumY / count);
     float avgBiasZ = (float)(sumZ / count);
 
+    // Zápis do HW registrů
+    // Poznámka: Pokud je bias -60 (z minula), resetHardwareOffsets ho smazal.
+    // Nyní naměříme reálný bias (např. 1.0 dps) a zapíšeme ho.
     setGyroHardwareOffset(avgBiasX, avgBiasY, avgBiasZ);
-    Serial.println("Calibration Done. HW Offsets written.");
-    Serial.print("Bias: "); Serial.print(avgBiasX); Serial.print(", ");
-    Serial.print(avgBiasY); Serial.print(", "); Serial.println(avgBiasZ);
+    
+    Serial.print("New HW Bias written: ");
+    Serial.print(avgBiasX); Serial.print(", ");
+    Serial.print(avgBiasY); Serial.print(", ");
+    Serial.println(avgBiasZ);
+    
+    // Znovu flush, aby další čtení už bylo s aplikovaným offsetem
+    delay(50);
+    flushFIFO();
   }
 }
 
 void ICM42688P::autoCalibrateAccel() {
-  Serial.println(F("\n=== 6-POINT ACCEL CALIBRATION ==="));
+  Serial.println(F("\n=== 6-POINT ACCEL CALIBRATION (HW Bias) ==="));
   
   resetHardwareOffsets();
   setAccelSoftwareScale(1.0, 1.0, 1.0);
   _aOX = 0; _aOY = 0; _aOZ = 0;
+  delay(100);
+  flushFIFO();
   
   struct Vector { float x, y, z; };
   Vector points[6];
@@ -258,6 +288,7 @@ void ICM42688P::autoCalibrateAccel() {
     while (!Serial.available()); Serial.read();
 
     Serial.println(F("Measuring..."));
+    flushFIFO(); // Vždy vyčistit před měřením
     double sumX = 0, sumY = 0, sumZ = 0;
     int count = 0;
     unsigned long start = millis();
@@ -312,7 +343,7 @@ void ICM42688P::autoCalibrateAccel() {
   Serial.println(F("\n-----------------------"));
 }
 
-// Low level
+// Low level IO
 uint8_t ICM42688P::readReg(uint8_t reg) {
   if (_bus == BUS_I2C) {
     Wire.beginTransmission(ICM_ADDR); Wire.write(reg); Wire.endTransmission(false);

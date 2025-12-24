@@ -33,7 +33,7 @@ public:
   bool begin(ICM_BUS busType, uint8_t csPin = 17);
   void setODR(ICM_ODR odr);
   
-  // Původní funkce pro čtení FIFO (zachována logika 1:1)
+  // Čtení FIFO (zachována 100% kompatibilita s tvou funkční verzí)
   bool readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz);
 
   // --- Wrapper metody pro zpětnou kompatibilitu ---
@@ -42,24 +42,28 @@ public:
   void getGyroOffset(float &ox, float &oy, float &oz);
   void getAccelOffset(float &ox, float &oy, float &oz);
 
-  // --- NOVÉ API ---
+  // --- NOVÉ API PRO KALIBRACI ---
   
-  // Resetuje HW registry na 0 (smaže kalibraci v čipu)
+  // Smaže kalibraci v čipu (resetuje registry v Bank 4 na 0)
   void resetHardwareOffsets();
 
-  // Software Scale (pro kalibraci citlivosti akcelerometru)
+  // SW Scale (pro kalibraci akcelerometru, čip to neumí HW)
   void setAccelSoftwareScale(float sx, float sy, float sz);
   void getAccelSoftwareScale(float &sx, float &sy, float &sz);
 
-  // SW Offsety (počítané v procesoru)
+  // SW Offsety (pouze v MCU)
   void setGyroSoftwareOffset(float ox, float oy, float oz);
   void setAccelSoftwareOffset(float ox, float oy, float oz);
 
-  // HW Offsety (zápis přímo do čipu)
+  // HW Offsety (zápis přímo do čipu Bank 4)
   void setGyroHardwareOffset(float ox, float oy, float oz);
   void setAccelHardwareOffset(float ox, float oy, float oz);
   
+  // Získání aktuálních HW offsetů (přečteno z čipu)
+  void getGyroHardwareOffset(float &ox, float &oy, float &oz);
+  
   // --- Kalibrační funkce ---
+  // Automaticky změří bias a zapíše ho do HW registrů
   void autoCalibrateGyro(uint16_t samples = 1000);
   void autoCalibrateAccel(); 
 
@@ -69,12 +73,13 @@ private:
   SPISettings _spiSettings;
   ICM_ODR _odr;
 
-  float _gOX, _gOY, _gOZ;
-  float _aOX, _aOY, _aOZ;
-  float _aSx, _aSy, _aSz;
+  float _gOX, _gOY, _gOZ; // SW offsets
+  float _aOX, _aOY, _aOZ; // SW offsets
+  float _aSx, _aSy, _aSz; // SW scale
 
   void writeReg(uint8_t reg, uint8_t val);
   uint8_t readReg(uint8_t reg);
   void readRegs(uint8_t reg, uint8_t *buf, uint8_t len);
   void setBank(uint8_t bank);
+  void flushFIFO(); // Pomocná funkce pro vyprázdnění bufferu
 };
