@@ -2,8 +2,8 @@
 
 ICM42688P::ICM42688P()
 : _bus(BUS_I2C), _csPin(17), 
-  _spiSettings(10000000, MSBFIRST, SPI_MODE3), // 10 MHz
-  _odr(ODR_500HZ),
+  _spiSettings(10000000, MSBFIRST, SPI_MODE3), // 10 MHz SPI
+  _odr(ODR_500HZ), // Default v konstruktoru (bude přepsán v begin)
   _gOX(0), _gOY(0), _gOZ(0),
   _aOX(0), _aOY(0), _aOZ(0),
   _aSx(1.0f), _aSy(1.0f), _aSz(1.0f) {}
@@ -11,6 +11,13 @@ ICM42688P::ICM42688P()
 bool ICM42688P::begin(ICM_BUS busType, uint8_t csPin) {
   _bus = busType;
   _csPin = csPin;
+
+  // --- AUTOMATICKÉ NASTAVENÍ DEFAULTNÍHO ODR ---
+  if (_bus == BUS_SPI) {
+    _odr = ODR_4KHZ; // SPI = 4 kHz
+  } else {
+    _odr = ODR_500HZ; // I2C = 500 Hz
+  }
 
   if (_bus == BUS_I2C) {
     Wire.begin();
@@ -35,6 +42,7 @@ bool ICM42688P::begin(ICM_BUS busType, uint8_t csPin) {
 
   writeReg(0x4E, 0x0F); // LN mode
   
+  // Zápis ODR (nyní už s hodnotou podle typu sběrnice)
   writeReg(0x4F, (0 << 5) | (uint8_t)_odr); 
   writeReg(0x50, (0 << 5) | (uint8_t)_odr); 
 
@@ -55,7 +63,7 @@ void ICM42688P::setBank(uint8_t bank) {
   writeReg(REG_BANK_SEL, bank);
 }
 
-// --- ČTENÍ FIFO (Zachována logika bitshiftů) ---
+// --- ČTENÍ FIFO ---
 bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, float &gz) {
   uint16_t fifoCount = ((uint16_t)readReg(0x2E) << 8) | readReg(0x2F);
   if (fifoCount < 20) return false;
@@ -68,7 +76,7 @@ bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, 
 
   int32_t ax_r = (int32_t)((int8_t)packet[1] << 12 | packet[2] << 4 | (packet[17] >> 4));
   ax_r = (ax_r << 12) >> 12; 
-  ax_r >>= 2; // Shift z originálu
+  ax_r >>= 2; 
 
   int32_t ay_r = (int32_t)((int8_t)packet[3] << 12 | packet[4] << 4 | (packet[18] >> 4));
   ay_r = (ay_r << 12) >> 12; 
@@ -80,7 +88,7 @@ bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, 
 
   int32_t gx_r = (int32_t)((int8_t)packet[7] << 12 | packet[8] << 4 | (packet[17] & 0x0F));
   gx_r = (gx_r << 12) >> 12; 
-  gx_r >>= 1; // Shift
+  gx_r >>= 1; 
 
   int32_t gy_r = (int32_t)((int8_t)packet[9] << 12 | packet[10] << 4 | (packet[18] & 0x0F));
   gy_r = (gy_r << 12) >> 12; 
@@ -90,8 +98,7 @@ bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, 
   gz_r = (gz_r << 12) >> 12; 
   gz_r >>= 1;
 
-  // HW Offsety jsou již odečteny v čipu.
-  // Zde odečítáme jen SW offsety (pokud nějaké jsou) a aplikujeme Scale.
+  // SW Kalibrace
   float raw_ax = (ax_r / 8192.0f) - _aOX;
   float raw_ay = (ay_r / 8192.0f) - _aOY;
   float raw_az = (az_r / 8192.0f) - _aOZ;
@@ -107,138 +114,36 @@ bool ICM42688P::readFIFO(float &ax, float &ay, float &az, float &gx, float &gy, 
   return true;
 }
 
-// Vyčte všechna data z FIFO (zahodí je), aby následující měření bylo čerstvé
-void ICM42688P::flushFIFO() {
-  uint16_t fifoCount = ((uint16_t)readReg(0x2E) << 8) | readReg(0x2F);
-  while (fifoCount > 0) {
-    uint8_t dummy[20];
-    uint8_t len = (fifoCount > 20) ? 20 : fifoCount;
-    readRegs(0x30, dummy, len);
-    fifoCount = ((uint16_t)readReg(0x2E) << 8) | readReg(0x2F);
-    delayMicroseconds(100);
-  }
-}
-
-// --- Wrappers ---
-void ICM42688P::setGyroOffset(float ox, float oy, float oz) { setGyroSoftwareOffset(ox, oy, oz); }
-void ICM42688P::setAccelOffset(float ox, float oy, float oz) { setAccelSoftwareOffset(ox, oy, oz); }
-void ICM42688P::getGyroOffset(float &ox, float &oy, float &oz) { ox = _gOX; oy = _gOY; oz = _gOZ; }
-void ICM42688P::getAccelOffset(float &ox, float &oy, float &oz) { ox = _aOX; oy = _aOY; oz = _aOZ; }
-
-// --- SW API ---
-void ICM42688P::setGyroSoftwareOffset(float ox, float oy, float oz) { _gOX = ox; _gOY = oy; _gOZ = oz; }
-void ICM42688P::setAccelSoftwareOffset(float ox, float oy, float oz) { _aOX = ox; _aOY = oy; _aOZ = oz; }
-void ICM42688P::setAccelSoftwareScale(float sx, float sy, float sz) { _aSx = sx; _aSy = sy; _aSz = sz; }
-void ICM42688P::getAccelSoftwareScale(float &sx, float &sy, float &sz) { sx = _aSx; sy = _aSy; sz = _aSz; }
-
-// --- HARDWARE API (Bank 4, 0x77 - 0x7F) ---
-
-int16_t clamp12bit_hw(int32_t val) {
-  if (val > 2047) return 2047;
-  if (val < -2048) return -2048;
-  return (int16_t)val;
-}
-
+// --- RESET HW OFFSETS ---
 void ICM42688P::resetHardwareOffsets() {
   setBank(4);
-  // Registry 0x77 az 0x7F
   for (uint8_t r = 0x77; r <= 0x7F; r++) {
     writeReg(r, 0x00);
   }
   setBank(0);
 }
 
-void ICM42688P::setGyroHardwareOffset(float ox, float oy, float oz) {
-  setBank(4);
-  
-  // Resolution 1/32 dps.
-  // Datasheet: Offset is SUBTRACTED.
-  int16_t gx = clamp12bit_hw((int32_t)(ox * 32.0f));
-  int16_t gy = clamp12bit_hw((int32_t)(oy * 32.0f));
-  int16_t gz = clamp12bit_hw((int32_t)(oz * 32.0f));
+// --- SW Setters ---
+void ICM42688P::setGyroOffset(float ox, float oy, float oz) { _gOX = ox; _gOY = oy; _gOZ = oz; }
+void ICM42688P::setAccelOffset(float ox, float oy, float oz) { _aOX = ox; _aOY = oy; _aOZ = oz; }
+void ICM42688P::setAccelScale(float sx, float sy, float sz) { _aSx = sx; _aSy = sy; _aSz = sz; }
 
-  uint8_t gx_l = gx & 0xFF;
-  uint8_t gx_h = (gx >> 8) & 0x0F;
-  
-  uint8_t gy_l = gy & 0xFF;
-  uint8_t gy_h = (gy >> 8) & 0x0F;
-  
-  uint8_t gz_l = gz & 0xFF;
-  uint8_t gz_h = (gz >> 8) & 0x0F;
+void ICM42688P::setGyroSoftwareOffset(float ox, float oy, float oz) { _gOX = ox; _gOY = oy; _gOZ = oz; }
+void ICM42688P::setAccelSoftwareOffset(float ox, float oy, float oz) { _aOX = ox; _aOY = oy; _aOZ = oz; }
+void ICM42688P::setAccelSoftwareScale(float sx, float sy, float sz) { _aSx = sx; _aSy = sy; _aSz = sz; }
 
-  // 0x77: Gyro X Lower
-  writeReg(0x77, gx_l);
-  
-  // 0x78: Gyro Y High [7:4] | Gyro X High [3:0]
-  writeReg(0x78, (gy_h << 4) | gx_h);
-  
-  // 0x79: Gyro Y Lower
-  writeReg(0x79, gy_l);
-  
-  // 0x7A: Gyro Z Lower
-  writeReg(0x7A, gz_l);
-
-  // 0x7B: Accel X High [7:4] | Gyro Z High [3:0]
-  uint8_t reg7B = readReg(0x7B);
-  writeReg(0x7B, (reg7B & 0xF0) | gz_h);
-
-  setBank(0);
-}
-
-void ICM42688P::setAccelHardwareOffset(float ox, float oy, float oz) {
-  setBank(4);
-
-  // 1 LSB = 0.5 mg -> 2000 LSB/g
-  int16_t ax = clamp12bit_hw((int32_t)(ox * 2000.0f));
-  int16_t ay = clamp12bit_hw((int32_t)(oy * 2000.0f));
-  int16_t az = clamp12bit_hw((int32_t)(oz * 2000.0f));
-
-  uint8_t ax_l = ax & 0xFF;
-  uint8_t ax_h = (ax >> 8) & 0x0F;
-  
-  uint8_t ay_l = ay & 0xFF;
-  uint8_t ay_h = (ay >> 8) & 0x0F;
-  
-  uint8_t az_l = az & 0xFF;
-  uint8_t az_h = (az >> 8) & 0x0F;
-
-  // 0x7B: Accel X High [7:4] | Gyro Z High [3:0]
-  uint8_t reg7B = readReg(0x7B);
-  writeReg(0x7B, (ax_h << 4) | (reg7B & 0x0F));
-  
-  // 0x7C: Accel X Lower
-  writeReg(0x7C, ax_l);
-
-  // 0x7D: Accel Y Lower
-  writeReg(0x7D, ay_l);
-
-  // 0x7E: Accel Z High [7:4] | Accel Y High [3:0]
-  writeReg(0x7E, (az_h << 4) | ay_h);
-  
-  // 0x7F: Accel Z Lower
-  writeReg(0x7F, az_l);
-
-  setBank(0);
-}
-
-void ICM42688P::getGyroHardwareOffset(float &ox, float &oy, float &oz) {
-  // Pro debug - lze implementovat čtení registrů, prozatím vrátí 0
-  ox = 0; oy = 0; oz = 0; 
-}
+// --- Getters ---
+void ICM42688P::getGyroOffset(float &ox, float &oy, float &oz) { ox = _gOX; oy = _gOY; oz = _gOZ; }
+void ICM42688P::getAccelOffset(float &ox, float &oy, float &oz) { ox = _aOX; oy = _aOY; oz = _aOZ; }
+void ICM42688P::getAccelScale(float &sx, float &sy, float &sz) { sx = _aSx; sy = _aSy; sz = _aSz; }
+void ICM42688P::getAccelSoftwareScale(float &sx, float &sy, float &sz) { sx = _aSx; sy = _aSy; sz = _aSz; }
 
 // --- KALIBRACE ---
 void ICM42688P::autoCalibrateGyro(uint16_t samples) {
-  Serial.println("GYRO CALIBRATION (HW)...");
+  Serial.println("GYRO CALIBRATION (SW)... Keep still.");
+  _gOX = 0; _gOY = 0; _gOZ = 0; 
+  delay(200);
   
-  // 1. Reset HW offsets (abychom měřili čistý bias)
-  resetHardwareOffsets();
-  _gOX = 0; _gOY = 0; _gOZ = 0;
-  
-  // 2. Vyprázdnit FIFO (DŮLEŽITÉ: odstraníme stará data s případnou chybou)
-  delay(100);
-  flushFIFO(); 
-  delay(100);
-
   double sumX = 0, sumY = 0, sumZ = 0;
   uint16_t count = 0;
   for (uint16_t i = 0; i < samples; i++) {
@@ -248,47 +153,37 @@ void ICM42688P::autoCalibrateGyro(uint16_t samples) {
     }
     delayMicroseconds(1000);
   }
-
+  
   if (count > 0) {
-    float avgBiasX = (float)(sumX / count);
-    float avgBiasY = (float)(sumY / count);
-    float avgBiasZ = (float)(sumZ / count);
-
-    // Zápis do HW registrů
-    // Poznámka: Pokud je bias -60 (z minula), resetHardwareOffsets ho smazal.
-    // Nyní naměříme reálný bias (např. 1.0 dps) a zapíšeme ho.
-    setGyroHardwareOffset(avgBiasX, avgBiasY, avgBiasZ);
+    _gOX = (float)(sumX / count);
+    _gOY = (float)(sumY / count);
+    _gOZ = (float)(sumZ / count);
     
-    Serial.print("New HW Bias written: ");
-    Serial.print(avgBiasX); Serial.print(", ");
-    Serial.print(avgBiasY); Serial.print(", ");
-    Serial.println(avgBiasZ);
-    
-    // Znovu flush, aby další čtení už bylo s aplikovaným offsetem
-    delay(50);
-    flushFIFO();
+    Serial.println("DONE. Results:");
+    Serial.print("Gyro Bias: ");
+    Serial.print(_gOX, 4); Serial.print(", ");
+    Serial.print(_gOY, 4); Serial.print(", ");
+    Serial.println(_gOZ, 4);
   }
 }
 
 void ICM42688P::autoCalibrateAccel() {
-  Serial.println(F("\n=== 6-POINT ACCEL CALIBRATION (HW Bias) ==="));
+  Serial.println(F("\n=== 6-POINT ACCEL CALIBRATION (SW) ==="));
+  Serial.println(F("Place sensor in 6 orientations (Z+, Z-, Y+, Y-, X+, X-)"));
   
-  resetHardwareOffsets();
-  setAccelSoftwareScale(1.0, 1.0, 1.0);
   _aOX = 0; _aOY = 0; _aOZ = 0;
-  delay(100);
-  flushFIFO();
+  _aSx = 1.0; _aSy = 1.0; _aSz = 1.0;
   
   struct Vector { float x, y, z; };
   Vector points[6];
 
   for (int i = 0; i < 6; i++) {
     Serial.print(F("\nPosition ")); Serial.print(i + 1); Serial.println(F("/6 -> Send 'y'"));
-    while (Serial.available()) Serial.read();
-    while (!Serial.available()); Serial.read();
+    while (Serial.available()) Serial.read(); 
+    while (!Serial.available()); 
+    Serial.read();
 
     Serial.println(F("Measuring..."));
-    flushFIFO(); // Vždy vyčistit před měřením
     double sumX = 0, sumY = 0, sumZ = 0;
     int count = 0;
     unsigned long start = millis();
@@ -304,12 +199,13 @@ void ICM42688P::autoCalibrateAccel() {
     Serial.print(points[i].y); Serial.print(", "); Serial.println(points[i].z);
   }
 
-  Serial.println(F("\nCalculating..."));
+  Serial.println(F("\nCalculating Sphere Fit..."));
+  
   float bx = 0, by = 0, bz = 0;
   float sx = 1, sy = 1, sz = 1;
   float learningRate = 0.05;
 
-  for (int iter = 0; iter < 1000; iter++) {
+  for (int iter = 0; iter < 2000; iter++) {
     float dbx = 0, dby = 0, dbz = 0;
     float dsx = 0, dsy = 0, dsz = 0;
 
@@ -329,18 +225,31 @@ void ICM42688P::autoCalibrateAccel() {
       dsy += 2.0f * common * adjY * (points[i].y - by);
       dsz += 2.0f * common * adjZ * (points[i].z - bz);
     }
-    bx -= learningRate * (dbx / 6.0f); by -= learningRate * (dby / 6.0f); bz -= learningRate * (dbz / 6.0f);
-    sx -= learningRate * (dsx / 6.0f); sy -= learningRate * (dsy / 6.0f); sz -= learningRate * (dsz / 6.0f);
-    if (iter % 100 == 0) learningRate *= 0.9;
+    
+    bx -= learningRate * (dbx / 6.0f);
+    by -= learningRate * (dby / 6.0f);
+    bz -= learningRate * (dbz / 6.0f);
+    sx -= learningRate * (dsx / 6.0f);
+    sy -= learningRate * (dsy / 6.0f);
+    sz -= learningRate * (dsz / 6.0f);
+    
+    if (iter % 200 == 0) learningRate *= 0.8;
   }
 
-  setAccelHardwareOffset(bx, by, bz);
-  setAccelSoftwareScale(sx, sy, sz);
+  _aOX = bx; _aOY = by; _aOZ = bz;
+  _aSx = sx; _aSy = sy; _aSz = sz;
 
   Serial.println(F("\n--- COPY TO SETUP() ---"));
-  Serial.print(F("IMU.setAccelHardwareOffset(")); Serial.print(bx, 4); Serial.print(", "); Serial.print(by, 4); Serial.print(", "); Serial.println(bz, 4); Serial.print(");");
-  Serial.print(F("\nIMU.setAccelSoftwareScale(")); Serial.print(sx, 4); Serial.print(", "); Serial.print(sy, 4); Serial.print(", "); Serial.println(sz, 4); Serial.print(");");
-  Serial.println(F("\n-----------------------"));
+  Serial.print(F("IMU.setAccelOffset(")); 
+  Serial.print(bx, 5); Serial.print(", "); 
+  Serial.print(by, 5); Serial.print(", "); 
+  Serial.print(bz, 5); Serial.println(");");
+  
+  Serial.print(F("IMU.setAccelScale(")); 
+  Serial.print(sx, 5); Serial.print(", "); 
+  Serial.print(sy, 5); Serial.print(", "); 
+  Serial.print(sz, 5); Serial.println(");");
+  Serial.println(F("-----------------------"));
 }
 
 // Low level IO

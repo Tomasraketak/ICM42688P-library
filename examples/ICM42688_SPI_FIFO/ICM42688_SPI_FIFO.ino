@@ -1,10 +1,7 @@
 /*
- * Příklad 3: SPI Komunikace s FIFO, ODR a Kalibrací
- * * Toto je produkční šablona.
- * 1. Inicializuje SPI (rychlejší přenos).
- * 2. Nastaví ODR na 200 Hz (nebo více).
- * 3. Aplikuje kalibrační data (musíte vyplnit své hodnoty).
- * 4. Čte FIFO buffer co nejrychleji.
+ * Příklad 3: SPI Komunikace s FIFO, ODR a SW Kalibrací
+ * * Tento příklad používá "Safe" verzi knihovny se softwarovými offsety.
+ * Offsety se odečítají v procesoru, nikoliv v čipu.
  */
 
 #include "ICM42688P_voltino.h"
@@ -25,30 +22,31 @@ void setup() {
   }
   Serial.println("ICM-42688-P uspesne pripojeno pres SPI.");
 
-  // 2. Nastavení ODR (Output Data Rate)
-  // Možnosti: ODR_32KHZ až ODR_12_5HZ.
-  // Pro běžné použití je ideální 100Hz - 500Hz.
-  IMU.setODR(ODR_200HZ);
+  // DŮLEŽITÉ: Vymažeme případné staré/chybné kalibrace přímo v čipu,
+  // abychom začali s čistým štítem.
+  //IMU.resetHardwareOffsets();
 
+  // 2. Nastavení ODR
+  IMU.setODR(ODR_4KHZ);
 
   // =============================================================
-  // 3. SEKVENCE KALIBRACE (ZDE VLOŽTE HODNOTY Z PŘÍKLADU 1)
+  // 3. SEKVENCE KALIBRACE (SW OFFSETY)
   // =============================================================
   
   // A) Akcelerometr (Bias + Scale)
-  // Nahraďte 0.00 naměřenými hodnotami:
-  // Příklad: IMU.setAccelHardwareOffset(0.021, -0.015, 0.005);
-  IMU.setAccelHardwareOffset(0.0000, 0.0000, 0.0000); 
-  IMU.setAccelSoftwareScale(1.0000, 1.0000, 1.0000);
+  // Používáme setAccelOffset (Softwarový) místo HardwareOffset
+  // Vlož sem hodnoty, které ti vypsal Calibration Tool
+  IMU.setAccelOffset(-0.0019, 0.0012, -0.0010); 
+  IMU.setAccelScale(1.0061, 1.0033, 0.9996);
 
   // B) Gyroskop (Bias)
-  // Gyro se nejlépe kalibruje při každém startu, pokud je zařízení v klidu.
-  // Pokud víte, že bude v pohybu, použijte setGyroHardwareOffset() s pevnými čísly.
-  
+  // Možnost 1: Automatická kalibrace při každém startu (Doporučeno pro gyro)
   Serial.println("Kalibruji gyro (prosim nehýbat)...");
-  IMU.autoCalibrateGyro(500); // Rychlá kalibrace při startu (500 vzorků)
-  // Alternativně, pokud znáte hodnoty:
-  // IMU.setGyroHardwareOffset(1.23, -0.55, 0.12);
+  IMU.autoCalibrateGyro(500); // Změří bias a uloží ho do SW proměnných
+  
+  // Možnost 2: Manuální nastavení (pokud znáš hodnoty a nechceš čekat)
+  // Pokud toto odkomentuješ, zakomentuj autoCalibrateGyro výše.
+  // IMU.setGyroOffset(0.61, -0.27, 0.16); 
 
   Serial.println("Nastaveni dokonceno. Startuji smycku.");
 }
@@ -57,15 +55,12 @@ void loop() {
   float ax, ay, az, gx, gy, gz;
 
   // Čtení FIFO
-  // Smyčka while zajistí, že přečteme všechna data, která se nahromadila v bufferu
+  // readFIFO automaticky odečte nastavené SW offsety
   while (IMU.readFIFO(ax, ay, az, gx, gy, gz)) {
     
-    // Zde probíhá zpracování dat (např. AHRS filtr, ukládání na SD kartu)
-    // ...
-    
-    // Výpis dat (zpomalený, abychom nezahltili Serial Monitor)
+    // Výpis dat
     static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 100) {
+    if (millis() - lastPrint > 50) {
       Serial.print("A [g]: ");
       Serial.print(ax, 3); Serial.print(", ");
       Serial.print(ay, 3); Serial.print(", ");
