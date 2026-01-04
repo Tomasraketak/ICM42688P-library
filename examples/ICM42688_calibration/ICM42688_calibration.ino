@@ -1,18 +1,23 @@
 /*
- * Příklad 1: Kalibrační Nástroj (Calibration Tool)
- * * Tento skript slouží k naměření offsetů a scaling faktorů.
- * Výsledné hodnoty si zkopírujte a vložte do funkce setup() ve vašem hlavním programu.
- * * Instrukce:
- * 'g' -> Kalibrace gyra (Senzor musí být v naprostém klidu!)
- * 'a' -> Kalibrace akcelerometru (Budete vyzváni k položení senzoru do 6 poloh)
- * 'x' -> Reset (Smaže všechny HW offsety v čipu - první pomoc při divných datech)
+ * Example 1: Calibration Tool
+ * * This script measures offsets and scaling factors.
+ * Copy and paste the resulting values into the setup() function of your main program.
+ *
+ * * INSTRUCTIONS:
+ * 'g' -> Gyro Calibration (Sensor must be perfectly still!)
+ * 'a' -> Accelerometer Calibration (You will be prompted to place sensor in 6 positions)
+ * 'x' -> Reset (Clears all HW offsets in the chip - first aid for weird data)
  */
 
 #include "ICM42688P_voltino.h"
 
-// Definice CS pinu pro SPI (Raspberry Pi Pico default: 17)
-// Pokud používáte I2C, změňte begin(BUS_SPI...) na begin(BUS_I2C) níže.
+// CS Pin definition for SPI (Raspberry Pi Pico default: 17)
 const uint8_t CS_PIN = 17;
+
+// SPI Frequency Configuration
+// - Raspberry Pi Pico / ESP32: 10 MHz (10000000) works great.
+// - Standard Arduino (Uno/Nano/AVR): Limit to 4 MHz (4000000) to avoid errors!
+const uint32_t SPI_FREQ = 10000000; 
 
 ICM42688P IMU;
 
@@ -20,17 +25,20 @@ void setup() {
   Serial.begin(115200);
   while (!Serial);
   
-  // Inicializace (zde SPI, pro I2C upravte parametry)
-  if (!IMU.begin(BUS_SPI, CS_PIN)) {
+  // Initialization (configured for SPI here, change params for I2C)
+  // Syntax: begin(BUS_TYPE, CS_PIN, SPI_FREQUENCY)
+  if (!IMU.begin(BUS_SPI, CS_PIN, SPI_FREQ)) {
     Serial.println("IMU not found!");
     while (1);
   }
   
   Serial.println("ICM-42688-P Connected.");
   
-  // Bezpečnostní reset čipu při startu
-  //IMU.resetHardwareOffsets();
-  //Serial.println("Hardware offsets cleared (Factory reset state).");
+  // Safety reset on startup (Optional)
+  // Uncomment if you want to ensure chip has no internal offsets applied before starting.
+  // IMU.resetHardwareOffsets();
+  // Serial.println("Hardware offsets cleared (Factory reset state).");
+  
   IMU.setODR(ODR_500HZ); 
 
   Serial.println("--------------------------------------");
@@ -46,18 +54,18 @@ void loop() {
     char c = Serial.read();
     
     if (c == 'g') {
-      // Spustí kalibraci gyra (1000 vzorků)
-      // Funkce sama vypíše výsledný kód do Serial Monitoru
+      // Starts gyro calibration (1000 samples)
+      // The function automatically prints the resulting code to Serial Monitor
       IMU.autoCalibrateGyro(1000);
     } 
     else if (c == 'a') {
-      // Spustí interaktivní 6-bodovou kalibraci akcelerometru
-      // Funkce vás provede procesem a na konci vypíše kód
+      // Starts interactive 6-point accelerometer calibration
+      // The function guides you through the process and prints the code at the end
       IMU.autoCalibrateAccel();
     }
     else if (c == 'x') {
       IMU.resetHardwareOffsets();
-      Serial.println("Hardwarové registry vymazány (Offset = 0).");
+      Serial.println("Hardware registers cleared (Offset = 0).");
     }
   }
 }

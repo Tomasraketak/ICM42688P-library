@@ -1,7 +1,7 @@
 /*
- * Příklad 2: Základní čtení přes I2C s aplikací SW kalibrace
- * * Tento skript inicializuje senzor, vyčistí staré (možná chybné) HW offsety
- * a čte data z FIFO bufferu.
+ * Example 2: Basic I2C Reading with SW Calibration
+ * * This script initializes the sensor, clears old (potentially incorrect) HW offsets,
+ * and reads data from the FIFO buffer.
  */
 
 #include "ICM42688P_voltino.h"
@@ -12,37 +12,37 @@ void setup() {
   Serial.begin(115200);
   while (!Serial);
 
-  Serial.println("Startuji I2C komunikaci...");
+  Serial.println("Starting I2C communication...");
   
-  // Adresa je defaultně 0x68. Pro I2C není potřeba CS pin.
+  // Default address is 0x68. CS pin is not needed for I2C.
   if (!IMU.begin(BUS_I2C)) {
-    Serial.println("Senzor nenalezen na I2C (zkontroluj adresu 0x68)!");
+    Serial.println("Sensor not found on I2C (check address 0x68)!");
     while (1);
   }
 
-  // DŮLEŽITÉ: Vymažeme případné staré HW offsety v čipu, aby nezkreslovaly data
+  // IMPORTANT: Clear any old HW offsets in the chip to prevent data distortion
   //IMU.resetHardwareOffsets();
 
-  // Nastavíme rychlost vzorkování
-  //IMU.setODR(ODR_50HZ); 
+  // Set sample rate
+  //IMU.setODR(ODR_500HZ); 
 
-  // --- SEM VLOŽ KALIBRAČNÍ HODNOTY (Pokud je máš změřené) ---
-  // Příklad:
+  // --- PASTE CALIBRATION VALUES HERE (If measured) ---
+  // Example:
   // IMU.setAccelOffset(0.02, -0.01, 0.05);
   // IMU.setAccelScale(1.001, 0.999, 1.002);
   // IMU.setGyroOffset(0.5, -0.2, 0.1);
 
-  Serial.println("Senzor OK. Ctu data...");
+  Serial.println("Sensor OK. Reading data...");
 }
 
 void loop() {
   float ax, ay, az, gx, gy, gz;
 
-  // Funkce readFIFO vrátí true, pokud je v zásobníku nový kompletní packet
-  // Automaticky aplikuje výše nastavené SW offsety
+  // The readFIFO function returns true if a new complete packet is in the buffer
+  // It automatically applies the SW offsets set above
   if (IMU.readFIFO(ax, ay, az, gx, gy, gz)) {
     
-    // Zpomalíme výpis pro čitelnost
+    // Slow down output for readability
     static unsigned long lastPrint = 0;
     if (millis() - lastPrint > 50) {
       Serial.print("Accel [g]: ");
