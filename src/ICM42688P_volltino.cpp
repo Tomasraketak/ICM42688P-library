@@ -46,7 +46,9 @@ bool ICM42688P::begin(ICM_BUS busType, int8_t csPin, uint32_t freq, uint8_t i2cA
     
     #if defined(ESP32)
       if (sckSclPin != -1 && misoSdaPin != -1 && mosiPin != -1) {
-        SPI.begin(sckSclPin, misoSdaPin, mosiPin, _csPin);
+        // Změna: Místo _csPin dáváme -1, aby HW driver nepřevzal kontrolu nad Chip Selectem,
+        // což by kolidovalo s našimi manuálními zápisy digitalWrite() u FIFO.
+        SPI.begin(sckSclPin, misoSdaPin, mosiPin, -1);
       } else {
         SPI.begin();
       }
@@ -113,7 +115,8 @@ bool ICM42688P::begin(ICM_BUS busType, int8_t csPin, uint32_t freq, uint8_t i2cA
 
 void ICM42688P::readRegisters(uint8_t startReg, uint8_t* buffer, size_t len) {
   if (_bus == BUS_SPI) {
-    SPI.beginTransaction(SPISettings(_spiFreq, MSBFIRST, SPI_MODE0));
+    // OPRAVA: Změněno z SPI_MODE0 na SPI_MODE3 pro bezchybnou InvenSense komunikaci
+    SPI.beginTransaction(SPISettings(_spiFreq, MSBFIRST, SPI_MODE3));
     if (_csPin != -1) digitalWrite(_csPin, LOW);
     SPI.transfer(startReg | 0x80); 
     for(size_t i=0; i<len; i++) buffer[i] = SPI.transfer(0x00);
@@ -130,7 +133,8 @@ void ICM42688P::readRegisters(uint8_t startReg, uint8_t* buffer, size_t len) {
 
 void ICM42688P::writeRegister(uint8_t reg, uint8_t data) {
   if (_bus == BUS_SPI) {
-    SPI.beginTransaction(SPISettings(_spiFreq, MSBFIRST, SPI_MODE0));
+    // OPRAVA: Změněno z SPI_MODE0 na SPI_MODE3
+    SPI.beginTransaction(SPISettings(_spiFreq, MSBFIRST, SPI_MODE3));
     if (_csPin != -1) digitalWrite(_csPin, LOW);
     SPI.transfer(reg & 0x7F); 
     SPI.transfer(data);
@@ -147,7 +151,8 @@ void ICM42688P::writeRegister(uint8_t reg, uint8_t data) {
 uint8_t ICM42688P::readRegister(uint8_t reg) {
   uint8_t data = 0;
   if (_bus == BUS_SPI) {
-    SPI.beginTransaction(SPISettings(_spiFreq, MSBFIRST, SPI_MODE0));
+    // OPRAVA: Změněno z SPI_MODE0 na SPI_MODE3
+    SPI.beginTransaction(SPISettings(_spiFreq, MSBFIRST, SPI_MODE3));
     if (_csPin != -1) digitalWrite(_csPin, LOW);
     SPI.transfer(reg | 0x80); 
     data = SPI.transfer(0x00);
